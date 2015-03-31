@@ -22,3 +22,5 @@ CREATE TABLE ProteinAtlas (
 
 LOAD DATA LOCAL INFILE "/Users/christophercotton/Desktop/proteinatlas.txt" INTO TABLE ProteinAtlas 
 FIELDS TERMINATED BY '\t';
+
+YOOOO
