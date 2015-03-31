@@ -19,3 +19,6 @@ CREATE TABLE ProteinAtlas (
 	RNA_TS_FPKM VARCHAR(500),
 	FPKM_max_in_nonspecific VARCHAR(500)
 ) ENGINE=InnoDB;
+
+LOAD DATA LOCAL INFILE "/Users/christophercotton/Desktop/proteinatlas.txt" INTO TABLE ProteinAtlas 
+FIELDS TERMINATED BY '\t';
