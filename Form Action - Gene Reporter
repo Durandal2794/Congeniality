@@ -1,0 +1,87 @@
+#!/usr/bin/python
+
+import cgi, cgitb
+import MySQLdb
+import sys
+
+# Define the checkbox storage variables
+ID = cgi.FieldStorage()
+Location = cgi.FieldStorage()
+TissueExpression = cgi.FieldStorage()
+SubCellularLocalization = cgi.FieldStorage()
+PheGenIGWAS = cgi.FieldStorage()
+MGIPhenotype = cgi.FieldStorage()
+PhenotypeEnvironment = cgi.FieldStorage()
+ProtProtInteract = cgi.FieldStorage()
+AdditionalInfo = cgi.FieldStorage()
+
+# Get values from checkboxes
+column_names = []
+table_names = []
+joins = []
+EntrezID = ()
+
+EntrezID = ID.getvalue("EntrezID")
+
+if Location.getvalue("Location"):
+	column_names.append("G.chromosome, G.Start, G.End")
+	table_names.append("Gene G")
+else:
+	table_names.append("Gene G")
+
+if TissueExpression.getvalue("TissueExpression"):
+	column_names.append("GT.Tissue, GT.ExpressionLevel")
+	table_names.append("Gene_Tissue GT")
+	joins.append("JOIN Gene_Tissue GT ON G.EntrezID = GT.EntrezID")
+
+if SubCellularLocalization.getvalue("SubCellularLocalization"):
+	column_names.append("GSC.SubCell")	
+	table_names.append("Gene_SubCell GSC")
+	joins.append("JOIN Gene_SubCell GSC ON G.EntrezID = GSC.EntrezID")
+	
+if PheGenIGWAS.getvalue("PheGenIGWAS"):
+	column_names.append("GWP.Phenotype")
+	table_names.append("GWASPhenotype GWP")
+	joins.append("JOIN GWASPhenotype GWP ON G.EntrezID = GWP.EntrezID JOIN Phenotype PHE ON GWP.PhenotypeID = PHE.PhenotypeID")
+	
+if MGIPhenotype.getvalue("MGIPhenotype"):
+	column_names.append("M.PhenotypeURL")
+	table_names.append("MGI M")
+	joins.append("JOIN MGI M ON G.EntrezID = M.EntrezID")
+	
+if PhenotypeEnvironment.getvalue("PhenotypeEnvironment") and PheGenIGWAS.getvalue("PheGenIGWAS"):
+	column_names.append("GE.Phenotype, GE.EnvironmentID")
+	table_names.append("Gene_Environment GE")
+	joins.append("""JOIN Gene_Environment GE ON G.EntrezID = GE.EntrezID JOIN Phenotype ON GE.PhenotypeID = PHE.PhenotypeID
+		JOIN Environment E ON E.EnvironmentID = GE.EnvironmentID""")
+elif PhenotypeEnvironment.getvalue("PhenotypeEnvironment"):
+	column_names.append("GE.Phenotype, GE.EnvironmentID")
+	table_names.append("Gene_Environment GE")
+	joins.append("""JOIN Gene_Environment GE ON G.EntrezID = GE.EntrezID JOIN Phenotype PHE ON GE.PhenotypeID = PHE.PhenotypeID
+		JOIN Environment E ON E.EnvironmentID = GE.EnvironmentID""")
+
+if ProtProtInteract.getvalue("ProtProtInteract"):
+	column_names.append("PP.EntrezID2, PP.PMID")
+	table_names.append("PPI PP")
+	joins.append("JOIN PPI PP ON G.EntrezID = PP.EntrezID1")
+
+if AdditionalInfo.getvalue("AdditionalInfo"):
+	column_names.append("KT.PMID, KT.Text")
+	table_names.append("KnowledgeTable KT")
+	joins.append("JOIN KnowledgeTable KT ON G.EntrezID = KT.EntrezID")
+
+# Construct query
+Query = "SELECT " + ", ".join(column_names) + " FROM Gene G " + " ".join(joins) + " WHERE G.EntrezID = (" + EntrezID + ");"
+
+if len(Query) > 43:
+	# connect to the database
+	connection = MySQLdb.connect(host = "localhost", user = "spider", db = "Congeniality", passwd = "BF768")
+	# get cursor
+	cursor = connection.cursor()
+	# run query
+	cursor.execute(Query)
+	# fetch results 
+	results = cursor.fetchall()
+	# close the connection
+	cursor.close()
+	connection.close()
