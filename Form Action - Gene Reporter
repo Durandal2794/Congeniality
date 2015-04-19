@@ -3,6 +3,9 @@
 import cgi, cgitb
 import MySQLdb
 import sys
+import csv
+import re
+import numpy as np
 
 # Define the checkbox storage variables
 ID = cgi.FieldStorage()
@@ -15,73 +18,201 @@ PhenotypeEnvironment = cgi.FieldStorage()
 ProtProtInteract = cgi.FieldStorage()
 AdditionalInfo = cgi.FieldStorage()
 
-# Get values from checkboxes
-column_names = []
-table_names = []
-joins = []
-EntrezID = ()
-
 EntrezID = ID.getvalue("EntrezID")
 
+# Assemble Queries
+Query1 = "SELECT G.EntrezID, G.chromosome, G.Start, G.End FROM Gene G WHERE G.EntrezID IN (" + str(EntrezID) + ");"
+Query1 = Query1.replace("((", "(")
+Query1 = Query1.replace("))", ")")
+Query2 = """SELECT G.EntrezID, GT.Tissue, GT.ExpressionLevel FROM Gene G LEFT JOIN Gene_Tissue GT ON G.EntrezID = GT.EntrezID
+ WHERE G.EntrezID IN (""" + str(EntrezID) + ");"
+Query2 = Query2.replace("((", "(")
+Query2 = Query2.replace("))", ")")
+Query3 = """SELECT G.EntrezID, GSC.SubCell FROM Gene G LEFT JOIN Gene_SubCell GSC ON G.EntrezID = GSC.EntrezID WHERE G.EntrezID
+ IN (""" + str(EntrezID) + ");"
+Query3 = Query3.replace("((", "(")
+Query3 = Query3.replace("))", ")")
+Query4 = """SELECT G.EntrezID, PHE.Phenotype FROM Gene G LEFT JOIN GWASPhenotype GWP ON G.EntrezID = GWP.EntrezID LEFT JOIN Phenotype
+ PHE ON GWP.PhenotypeID = PHE.PhenotypeID WHERE G.EntrezID IN (""" + str(EntrezID) + ");"
+Query4 = Query4.replace("((", "(")
+Query4 = Query4.replace("))", ")")
+Query5 = "SELECT G.EntrezID, M.PhenotypeURL FROM Gene G LEFT JOIN MGI M ON G.EntrezID = M.EntrezID WHERE G.EntrezID IN (" + str(EntrezID) + ");"
+Query5 = Query5.replace("((", "(")
+Query5 = Query5.replace("))", ")")
+Query6 = """SELECT G.EntrezID, E.Environment FROM Gene G LEFT JOIN Gene_Environment GE ON G.EntrezID = GE.EntrezID
+ LEFT JOIN Environment E ON E.EnvironmentID = GE.EnvironmentID WHERE G.EntrezID IN (""" + str(EntrezID) + ");"
+Query6 = Query6.replace("((", "(")
+Query6 = Query6.replace("))", ")")
+Query7 = """SELECT DISTINCT G.EntrezID FROM Gene G LEFT JOIN PPI PP ON G.EntrezID = PP.EntrezID1 or G.EntrezID = PP.EntrezID2
+ WHERE G.EntrezID NOT IN (""" + str(EntrezID) + ") AND (PP.EntrezID1 IN (" + str(EntrezID) + ") OR PP.EntrezID2 IN (" + str(EntrezID) + "));"
+Query7 = Query7.replace("((", "(")
+Query7 = Query7.replace("))", ")")
+Query8 = """SELECT G.EntrezID, KT.PMID, KT.Text FROM Gene G LEFT JOIN KnowledgeTable KT ON G.EntrezID = KT.EntrezID
+ WHERE G.EntrezID IN (""" + str(EntrezID) + ");"
+Query8 = Query8.replace("((", "(")
+Query8 = Query8.replace("))", ")")
+
+# connect to the database
+connection = MySQLdb.connect(host = "localhost", user = "root", db = "genecentric", passwd = "GXRPQrwI")
+# get cursor
+cursor = connection.cursor()
+
 if Location.getvalue("Location"):
-	column_names.append("G.chromosome, G.Start, G.End")
-	table_names.append("Gene G")
-else:
-	table_names.append("Gene G")
+	# run query
+	cursor.execute(Query1)
+	# fetch results 
+	results1 = cursor.fetchall()
 
 if TissueExpression.getvalue("TissueExpression"):
-	column_names.append("GT.Tissue, GT.ExpressionLevel")
-	table_names.append("Gene_Tissue GT")
-	joins.append("JOIN Gene_Tissue GT ON G.EntrezID = GT.EntrezID")
+	cursor.execute(Query2)
+	results2 = cursor.fetchall()
 
 if SubCellularLocalization.getvalue("SubCellularLocalization"):
-	column_names.append("GSC.SubCell")	
-	table_names.append("Gene_SubCell GSC")
-	joins.append("JOIN Gene_SubCell GSC ON G.EntrezID = GSC.EntrezID")
-	
+	cursor.execute(Query3)
+	results3 = cursor.fetchall()
+
 if PheGenIGWAS.getvalue("PheGenIGWAS"):
-	column_names.append("GWP.Phenotype")
-	table_names.append("GWASPhenotype GWP")
-	joins.append("JOIN GWASPhenotype GWP ON G.EntrezID = GWP.EntrezID JOIN Phenotype PHE ON GWP.PhenotypeID = PHE.PhenotypeID")
-	
+	cursor.execute(Query4)
+	results4 = cursor.fetchall()
+
 if MGIPhenotype.getvalue("MGIPhenotype"):
-	column_names.append("M.PhenotypeURL")
-	table_names.append("MGI M")
-	joins.append("JOIN MGI M ON G.EntrezID = M.EntrezID")
-	
-if PhenotypeEnvironment.getvalue("PhenotypeEnvironment") and PheGenIGWAS.getvalue("PheGenIGWAS"):
-	column_names.append("GE.Phenotype, GE.EnvironmentID")
-	table_names.append("Gene_Environment GE")
-	joins.append("""JOIN Gene_Environment GE ON G.EntrezID = GE.EntrezID JOIN Phenotype ON GE.PhenotypeID = PHE.PhenotypeID
-		JOIN Environment E ON E.EnvironmentID = GE.EnvironmentID""")
-elif PhenotypeEnvironment.getvalue("PhenotypeEnvironment"):
-	column_names.append("GE.Phenotype, GE.EnvironmentID")
-	table_names.append("Gene_Environment GE")
-	joins.append("""JOIN Gene_Environment GE ON G.EntrezID = GE.EntrezID JOIN Phenotype PHE ON GE.PhenotypeID = PHE.PhenotypeID
-		JOIN Environment E ON E.EnvironmentID = GE.EnvironmentID""")
+	cursor.execute(Query5)
+	results5 = cursor.fetchall()
+
+if PhenotypeEnvironment.getvalue("PhenotypeEnvironment"):
+	cursor.execute(Query6)
+	results6 = cursor.fetchall()
 
 if ProtProtInteract.getvalue("ProtProtInteract"):
-	column_names.append("PP.EntrezID2, PP.PMID")
-	table_names.append("PPI PP")
-	joins.append("JOIN PPI PP ON G.EntrezID = PP.EntrezID1")
+	cursor.execute(Query7)
+	results7 = cursor.fetchall()
 
 if AdditionalInfo.getvalue("AdditionalInfo"):
-	column_names.append("KT.PMID, KT.Text")
-	table_names.append("KnowledgeTable KT")
-	joins.append("JOIN KnowledgeTable KT ON G.EntrezID = KT.EntrezID")
+	cursor.execute(Query8)
+	results8 = cursor.fetchall()
 
-# Construct query
-Query = "SELECT " + ", ".join(column_names) + " FROM Gene G " + " ".join(joins) + " WHERE G.EntrezID = (" + EntrezID + ");"
 
-if len(Query) > 43:
-	# connect to the database
-	connection = MySQLdb.connect(host = "localhost", user = "spider", db = "Congeniality", passwd = "BF768")
-	# get cursor
-	cursor = connection.cursor()
-	# run query
-	cursor.execute(Query)
-	# fetch results 
-	results = cursor.fetchall()
-	# close the connection
-	cursor.close()
-	connection.close()
+# close the connection
+cursor.close()
+connection.close()
+
+# MC ESCHER!!!
+
+results1 = list(results1)
+results2 = list(results2)
+results3 = list(results3)
+results4 = list(results4)
+results5 = list(results5)
+results6 = list(results6)
+results7 = list(results7)
+results8 = list(results8)
+
+results1 = [map(str,x) for x in results1]
+results2 = [map(str,x) for x in results2]
+results3 = [map(str,x) for x in results3]
+results4 = [map(str,x) for x in results4]
+results5 = [map(str,x) for x in results5]
+results6 = [map(str,x) for x in results6]
+results7 = [map(str,x) for x in results7]
+results8 = [map(str,x) for x in results8]
+
+
+resultslist = [results1, results2, results3, results4, results5, results6, results7, results8]
+# Get all EntrezIDs for each row for each column in 8 strings where each EntrezID is enclosed by '' and terminated by ","
+r1 = str(zip(*results1)[0])
+r2 = str(zip(*results2)[0])
+r3 = str(zip(*results3)[0])
+r4 = str(zip(*results4)[0])
+r5 = str(zip(*results5)[0])
+r6 = str(zip(*results6)[0])
+r7 = str(zip(*results7)[0])
+r8 = str(zip(*results8)[0])
+# This enables us to count the number of times a certain EntrezID appears in a given column, i.e., the number of rows for that ID
+
+# Lists that will store the count of each EntrezID for each EntrezID
+rx1 = []
+rx2 = []
+rx3 = []
+rx4 = []
+rx5 = []
+rx6 = []
+rx7 = []
+rx8 = []
+
+# List of EntrezIDs as strings
+EntrezIDs = map(str, EntrezID)
+
+# Add quotes around each EntrezID
+for i in range(len(EntrezIDs)):
+	EntrezIDs[i] = "\'" + EntrezIDs[i] + "\'"
+
+# Count each EntrezID in each results list (i.e., in each column; EntrezIDs increasing left to right), save
+for i in EntrezIDs:
+	rx1.append(r1.count(i))
+
+for i in EntrezIDs:
+	rx2.append(r2.count(i))
+
+for i in EntrezIDs:
+	rx3.append(r3.count(i))
+
+for i in EntrezIDs:
+	rx4.append(r4.count(i))
+
+for i in EntrezIDs:
+	rx5.append(r5.count(i))
+
+for i in EntrezIDs:
+	rx6.append(r6.count(i))
+
+for i in EntrezIDs:
+	rx7.append(r7.count(i))
+
+for i in EntrezIDs:
+	rx8.append(r8.count(i))
+
+# A list of lists that contains information about the number of rows per EntrezID for each column (each tuple is an EntrezID)
+IDRows_per_Column = zip(rx1,rx2,rx3,rx4,rx5,rx6,rx7,rx8)
+
+# List containing the maximum number of rows per column per EntrezID (in order left to right, from smallest to greatest ID#)
+# Each element in list represents the number of rows for 1 EntrezID (increasing left to right)
+# The total sum of this list is the total # of rows in the table
+MaxIDRows = [max(IDRows_per_Column[i]) for i in range(len(IDRows_per_Column))]
+
+CMaxIDRows = list(np.cumsum(MaxIDRows))
+
+CMaxIDRows.insert(0, 0)
+
+# List of tuples containing EntrezID / Row Count pairs in order from left to right, smallest to greatest ID#)
+# Max number of rows per EntrezID
+IDRowCounts = zip(EntrezID, MaxIDRows)
+
+
+# Number of additional rows needed by each ID-Row for each Column for each ID (each tuple is an EntrezID)
+# Max Rows minus the first element of every rx variable give the first element of this list of lists
+AdditionalIDRowsNeeded = [[MaxIDRows[i] - IDRows_per_Column[i][x] for x in range(len(IDRows_per_Column[0]))] for i in range(len(MaxIDRows))]
+
+# This variable shows a list of lists, each list contains the number of additional rows needed per EntrezID (left to right)
+# for a given results list
+IDRowMap = [[AdditionalIDRowsNeeded[i][x] for i in range(len(AdditionalIDRowsNeeded))] for x in range(len(AdditionalIDRowsNeeded[0]))]
+
+
+for i in range(len(IDRowMap)):
+	for x in range(len(IDRowMap[0])):
+		extension = IDRowMap[i][x] * [resultslist[i][CMaxIDRows[x]]]
+		if x == 0:
+			n = IDRows_per_Column[x][i]
+		else:
+			n = CMaxIDRows[x] + 1
+		resultslist[i][n:n] = extension
+
+
+FinalResults = map(list, zip(*resultslist))
+
+
+print "Content-type: text/html\n"
+print "<html>"
+print "<body>"
+print FinalResults
+print "</body>"
+print "</html>"
