@@ -1,0 +1,85 @@
+#!/usr/bin/python
+
+import cgi, cgitb
+import MySQLdb
+import sys
+
+# Define the checkbox storage variables
+chromosome = cgi.FieldStorage()
+Tissue = cgi.FieldStorage()
+SubCell = cgi.FieldStorage()
+Phenotype = cgi.FieldStorage()
+
+# Initialize Column variables
+Gchromosome = []			# Integer
+GTTissue = []				# String (enumerated)
+GSCSubCell = []				# String (enumerated)
+GWPPhenotype = []			# String (enumerated)
+
+# Initialize getvalue Variables
+G1 = ""
+GT1 = ""
+GSC = ""
+GWP = ""
+
+# Initialize JOIN and WHERE lists
+joins = []
+wheres = []
+
+# Populate Joins and Wheres
+if chromosome.getvalue("chromosome"):
+	G1 = chromosome.getvalue("chromosome")
+	G1 = str(G1)
+	Gchromosome = "G.chromosome = " + G1
+	wheres.append(Gchromosome)
+	joins.append("")
+
+if Tissue.getvalue("Tissue"):
+	GT1 = Tissue.getvalue("Tissue")
+	GT1 = str(GT1)
+	GTTissue = "GT.Tissue IN (\'" + GT1 + "\')"
+	wheres.append(GTTissue)
+	joins.append("JOIN Gene_Tissue GT ON G.EntrezID = GT.EntrezID ")
+
+if SubCell.getvalue("SubCell"):
+	GSC = SubCell.getvalue("SubCell")
+	GSC = str(GSC)
+	GSCSubCell = "GSC.SubCell LIKE \'%" + GSC + "%\'"
+	wheres.append(GSCSubCell)
+	joins.append("JOIN Gene_SubCell GSC ON G.EntrezID = GSC.EntrezID ")
+
+if Phenotype.getvalue("Phenotype"):
+	GWP = Phenotype.getvalue("Phenotype")
+	GWP = str(GWP)
+	GWPPhenotype = "PHE.Phenotype IN (\'" + GWP + "\')"
+	wheres.append(GWPPhenotype)
+	joins.append("JOIN GWASPhenotype GWP ON G.EntrezID = GWP.EntrezID JOIN Phenotype PHE ON GWP.PhenotypeID = PHE.PhenotypeID ")
+
+
+# # Construct query
+Query = "SELECT G.EntrezID FROM Gene G " + "".join(joins) + "WHERE " + " AND ".join(wheres) + ";"
+
+results = []
+
+# Execute Query
+if len(Query) > 37:
+	# connect to the database
+	connection = MySQLdb.connect(host = "bioed.bu.edu", user = "ccotton", db = "genecentric", passwd = "")
+	# get cursor
+	cursor = connection.cursor()
+	# run query
+	cursor.execute(Query)
+	# fetch results 
+	results = cursor.fetchall()
+	# close the connection
+	cursor.close()
+	connection.close()
+
+
+# Display Results
+print "Content-type: text/html\n"
+print "<html>"
+print "<body>"
+print results
+print "</body>"
+print "</html>"
